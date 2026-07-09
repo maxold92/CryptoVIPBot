@@ -1,37 +1,26 @@
-import os
-from dataclasses import dataclass
-from dotenv import load_dotenv
-
-load_dotenv()
+from pybit.unified_trading import HTTP
+import pandas as pd
+from config import config
 
 
-def _int_list(value: str) -> list[int]:
-    return [int(x.strip()) for x in value.split(',') if x.strip()]
+class BybitClient:
+    def __init__(self):
+        kwargs = {'testnet': config.bybit_testnet}
+        if config.bybit_api_key and config.bybit_api_secret:
+            kwargs.update(api_key=config.bybit_api_key, api_secret=config.bybit_api_secret)
+        self.session = HTTP(**kwargs)
 
+    def ticker(self, symbol: str) -> dict:
+        data = self.session.get_tickers(category='linear', symbol=symbol)
+        return data['result']['list'][0]
 
-@dataclass(frozen=True)
-class Config:
-    bot_token: str = os.getenv('BOT_TOKEN', '')
-    vip_group_id: int = int(os.getenv('VIP_GROUP_ID', '0'))
-    admin_ids: list[int] = None
-    bybit_api_key: str = os.getenv('BYBIT_API_KEY', '')
-    bybit_api_secret: str = os.getenv('BYBIT_API_SECRET', '')
-    bybit_testnet: bool = os.getenv('BYBIT_TESTNET', 'false').lower() == 'true'
-    timezone: str = os.getenv('TIMEZONE', 'Europe/Kiev')
-    morning_message: str = os.getenv('MORNING_MESSAGE', '☀️ Доброе утро трейдеры)')
-    scan_symbols: list[str] = None
-    scan_interval_minutes: int = int(os.getenv('SCAN_INTERVAL_MINUTES', '5'))
-    signal_min_score: int = int(os.getenv('SIGNAL_MIN_SCORE', '70'))
+    def klines(self, symbol: str, interval: str = '15', limit: int = 200) -> pd.DataFrame:
+        data = self.session.get_kline(category='linear', symbol=symbol, interval=interval, limit=limit)
+        rows = data['result']['list']
+        df = pd.DataFrame(rows, columns=['time', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
+        for col in ['open', 'high', 'low', 'close', 'volume', 'turnover']:
+            df[col] = df[col].astype(float)
+        df['time'] = pd.to_datetime(df['time'].astype(int), unit='ms')
+        return df.sort_values('time').reset_index(drop=True)
 
-    def __post_init__(self):
-        object.__setattr__(self, 'admin_ids', _int_list(os.getenv('ADMIN_IDS', '')))
-        symbols = [s.strip().upper() for s in os.getenv('SCAN_SYMBOLS', 'BTCUSDT,ETHUSDT').split(',') if s.strip()]
-        object.__setattr__(self, 'scan_symbols', symbols)
-
-    def validate(self) -> None:
-        if not self.bot_token:
-            raise RuntimeError('BOT_TOKEN не указан в .env')
-        if not self.vip_group_id:
-            raise RuntimeError('VIP_GROUP_ID не указан в .env')
-
-config = Config()
+bybit = BybitClient()

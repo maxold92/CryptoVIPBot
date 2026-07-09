@@ -1,11 +1,14 @@
-BOT_TOKEN=123456:YOUR_TELEGRAM_BOT_TOKEN
-VIP_GROUP_ID=-1001234567890
-ADMIN_IDS=123456789,987654321
-BYBIT_API_KEY=
-BYBIT_API_SECRET=
-BYBIT_TESTNET=false
-TIMEZONE=Europe/Kiev
-MORNING_MESSAGE=☀️ Доброе утро трейдеры)
-SCAN_SYMBOLS=BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,DOGEUSDT
-SCAN_INTERVAL_MINUTES=5
-SIGNAL_MIN_SCORE=70
+def format_signal(signal: dict) -> str:
+    stars = "⭐" * max(1, min(5, signal["score"] // 20))
+    reasons = "\n".join([f"✅ {r}" for r in signal["reasons"]])
+    return (
+        f"🚨 VIP СИГНАЛ {signal['side']} {stars}\n\n"
+        f"Монета: {signal['symbol']}\n"
+        f"Вероятность: {signal['score']}%\n\n"
+        f"Вход: {signal['entry']:.6f}\n"
+        f"TP1: {signal['tp1']:.6f}\n"
+        f"TP2: {signal['tp2']:.6f}\n"
+        f"SL: {signal['sl']:.6f}\n\n"
+        f"Причины:\n{reasons}\n\n"
+        f"⚠️ Не финансовая рекомендация. Соблюдай риск-менеджмент."
+    )

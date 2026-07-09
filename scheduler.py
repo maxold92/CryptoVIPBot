@@ -1,15 +1,29 @@
-import asyncio
-from config import config
-from database import init_db
-from bot import bot, dp
-from scheduler import setup_scheduler
+import aiosqlite
+from datetime import datetime
 
-async def main():
-    config.validate()
-    await init_db()
-    setup_scheduler()
-    print('CryptoVIPBot запущен')
-    await dp.start_polling(bot)
+DB_PATH = "database/bot.db"
 
-if __name__ == '__main__':
-    asyncio.run(main())
+async def init_db():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT,
+            side TEXT,
+            score INTEGER,
+            entry TEXT,
+            tp1 TEXT,
+            tp2 TEXT,
+            sl TEXT,
+            created_at TEXT
+        )
+        """)
+        await db.commit()
+
+async def save_signal(symbol, side, score, entry, tp1, tp2, sl):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO signals(symbol, side, score, entry, tp1, tp2, sl, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (symbol, side, score, str(entry), str(tp1), str(tp2), str(sl), datetime.utcnow().isoformat())
+        )
+        await db.commit()

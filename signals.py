@@ -1,62 +1,40 @@
-# CryptoVIPBot
+import asyncio
+import logging
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import CommandStart, Command
 
-Telegram Crypto VIP Bot с Bybit анализом, сигналами и утренним сообщением в группу в 09:00.
+from config import BOT_TOKEN, ADMIN_IDS
+from database import init_db
+from scheduler import start_scheduler, scan_market
 
-## Возможности
+logging.basicConfig(level=logging.INFO)
 
-- Telegram-бот на aiogram 3
-- Подключение к Bybit через pybit
-- Команда `/analyze BTCUSDT`
-- Автоматический скан рынка каждые 5 минут
-- Отправка сигналов в VIP-группу
-- Утреннее сообщение: `☀️ Доброе утро трейдеры)`
-- SQLite база данных
-- VIP-доступ и простая админ-панель
+dp = Dispatcher()
 
-## Установка
+@dp.message(CommandStart())
+async def start(message: types.Message):
+    await message.answer("CryptoVIPBot запущен ✅")
 
-```bash
-git clone https://github.com/maxold92/CryptoVIPBot.git
-cd CryptoVIPBot
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env
-python main.py
-```
+@dp.message(Command("id"))
+async def get_id(message: types.Message):
+    await message.answer(f"Ваш ID: {message.from_user.id}\nChat ID: {message.chat.id}")
 
-На Linux/Mac:
+@dp.message(Command("scan"))
+async def manual_scan(message: types.Message, bot: Bot):
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer("Нет доступа")
+        return
+    await message.answer("Запускаю ручной анализ рынка...")
+    await scan_market(bot)
+    await message.answer("Анализ завершен")
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-python main.py
-```
+async def main():
+    if not BOT_TOKEN:
+        raise RuntimeError("Не указан BOT_TOKEN в .env")
+    await init_db()
+    bot = Bot(BOT_TOKEN)
+    await start_scheduler(bot)
+    await dp.start_polling(bot)
 
-## Настройка `.env`
-
-```env
-BOT_TOKEN=токен_из_BotFather
-VIP_GROUP_ID=-100xxxxxxxxxx
-ADMIN_IDS=твой_telegram_id
-BYBIT_API_KEY=
-BYBIT_API_SECRET=
-BYBIT_TESTNET=false
-TIMEZONE=Europe/Kiev
-```
-
-Для публичного анализа Bybit ключи можно оставить пустыми. Для приватных функций ключи понадобятся позже.
-
-## Команды
-
-- `/start`
-- `/help`
-- `/vip`
-- `/analyze BTCUSDT`
-- `/addvip USER_ID`
-- `/delvip USER_ID`
-- `/send текст`
-
-⚠️ Бот не дает финансовых гарантий. Используй риск-менеджмент.
+if __name__ == "__main__":
+    asyncio.run(main())
