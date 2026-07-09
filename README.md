@@ -1,26 +1,27 @@
-from pybit.unified_trading import HTTP
-import pandas as pd
-from config import config
+# CryptoVIPBot
 
+Telegram-бот для криптовалютных сигналов с подключением к Bybit.
 
-class BybitClient:
-    def __init__(self):
-        kwargs = {'testnet': config.bybit_testnet}
-        if config.bybit_api_key and config.bybit_api_secret:
-            kwargs.update(api_key=config.bybit_api_key, api_secret=config.bybit_api_secret)
-        self.session = HTTP(**kwargs)
+## Установка на сервере
 
-    def ticker(self, symbol: str) -> dict:
-        data = self.session.get_tickers(category='linear', symbol=symbol)
-        return data['result']['list'][0]
+```bash
+git clone https://github.com/maxold92/CryptoVIPBot.git
+cd CryptoVIPBot
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+nano .env
+python3 main.py
+```
 
-    def klines(self, symbol: str, interval: str = '15', limit: int = 200) -> pd.DataFrame:
-        data = self.session.get_kline(category='linear', symbol=symbol, interval=interval, limit=limit)
-        rows = data['result']['list']
-        df = pd.DataFrame(rows, columns=['time', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
-        for col in ['open', 'high', 'low', 'close', 'volume', 'turnover']:
-            df[col] = df[col].astype(float)
-        df['time'] = pd.to_datetime(df['time'].astype(int), unit='ms')
-        return df.sort_values('time').reset_index(drop=True)
+## Команды Telegram
 
-bybit = BybitClient()
+- `/start` — проверка запуска
+- `/id` — узнать свой ID и ID группы
+- `/test` — тестовое сообщение
+- `/scan` — ручной скан рынка
+
+## Важно
+
+Файл `.env` не загружай на GitHub. Там хранятся токены и ключи.

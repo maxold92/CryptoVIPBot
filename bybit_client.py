@@ -1,21 +1,37 @@
+from __future__ import annotations
+
 import pandas as pd
+from pybit.unified_trading import HTTP
+from config import config
 
 
-def ema(series: pd.Series, period: int) -> pd.Series:
-    return series.ewm(span=period, adjust=False).mean()
+class BybitClient:
+    def __init__(self) -> None:
+        kwargs = {"testnet": config.bybit_testnet}
+        if config.bybit_api_key and config.bybit_api_secret:
+            kwargs.update(api_key=config.bybit_api_key, api_secret=config.bybit_api_secret)
+        self.session = HTTP(**kwargs)
+
+    def ticker(self, symbol: str) -> dict:
+        data = self.session.get_tickers(category="linear", symbol=symbol)
+        return data["result"]["list"][0]
+
+    def klines(self, symbol: str, interval: str = "15", limit: int = 200) -> pd.DataFrame:
+        data = self.session.get_kline(category="linear", symbol=symbol, interval=interval, limit=limit)
+        rows = data["result"]["list"]
+        df = pd.DataFrame(rows, columns=["time", "open", "high", "low", "close", "volume", "turnover"])
+        for col in ["open", "high", "low", "close", "volume", "turnover"]:
+            df[col] = df[col].astype(float)
+        df["time"] = pd.to_datetime(df["time"].astype(int), unit="ms")
+        return df.sort_values("time").reset_index(drop=True)
+
+    def funding_rate(self, symbol: str) -> float | None:
+        try:
+            data = self.session.get_funding_rate_history(category="linear", symbol=symbol, limit=1)
+            rows = data["result"]["list"]
+            return float(rows[0]["fundingRate"]) if rows else None
+        except Exception:
+            return None
 
 
-def rsi(series: pd.Series, period: int = 14) -> pd.Series:
-    delta = series.diff()
-    gain = delta.clip(lower=0).rolling(period).mean()
-    loss = (-delta.clip(upper=0)).rolling(period).mean()
-    rs = gain / loss.replace(0, 1e-9)
-    return 100 - (100 / (1 + rs))
-
-
-def atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    high_low = df['high'] - df['low']
-    high_close = (df['high'] - df['close'].shift()).abs()
-    low_close = (df['low'] - df['close'].shift()).abs()
-    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-    return tr.rolling(period).mean()
+bybit = BybitClient()

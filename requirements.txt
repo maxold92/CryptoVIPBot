@@ -1,15 +1,8 @@
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID", "")
-ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").replace(" ", "").split(",") if x]
-BYBIT_API_KEY = os.getenv("BYBIT_API_KEY", "")
-BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET", "")
-BYBIT_TESTNET = os.getenv("BYBIT_TESTNET", "false").lower() == "true"
-TIMEZONE = os.getenv("TIMEZONE", "Europe/Kyiv")
-MORNING_MESSAGE = os.getenv("MORNING_MESSAGE", "Доброе утро трейдеры)")
-SIGNAL_SYMBOLS = [x.strip().upper() for x in os.getenv("SIGNAL_SYMBOLS", "BTCUSDT,ETHUSDT").split(",") if x.strip()]
-SIGNAL_INTERVAL_MINUTES = int(os.getenv("SIGNAL_INTERVAL_MINUTES", "15"))
+aiogram==3.13.1
+python-dotenv==1.0.1
+aiohttp==3.10.10
+aiosqlite==0.20.0
+apscheduler==3.10.4
+pybit==5.8.0
+pandas==2.2.3
+ta==0.11.0

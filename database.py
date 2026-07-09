@@ -1,10 +1,18 @@
-BOT_TOKEN=PASTE_TELEGRAM_BOT_TOKEN
-GROUP_CHAT_ID=PASTE_GROUP_ID
-ADMIN_IDS=123456789
-BYBIT_API_KEY=
-BYBIT_API_SECRET=
-BYBIT_TESTNET=false
-TIMEZONE=Europe/Kyiv
-MORNING_MESSAGE=Доброе утро трейдеры)
-SIGNAL_SYMBOLS=BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT
-SIGNAL_INTERVAL_MINUTES=15
+import aiosqlite
+
+DB_PATH = "bot.db"
+
+
+async def init_db() -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sent_signals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                message TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        await db.commit()
