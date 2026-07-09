@@ -1,7 +1,39 @@
-aiogram==3.13.1
-python-dotenv==1.0.1
-aiosqlite==0.20.0
-apscheduler==3.10.4
-pybit==5.8.0
-pandas==2.2.3
-ta==0.11.0
+# CryptoVIPBot v2.1.2
+
+Sprint 1: VIP-доступ, база пользователей, заявки на оплату, админ-кнопки, Bybit-анализ, авто-сообщение в 09:00.
+
+## Запуск
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+nano .env
+python main.py
+```
+
+## Команды
+
+- `/start` — меню
+- `/menu` — меню
+- `/status` — статус
+- `/vip` — мой VIP
+- `/myid` — узнать Telegram ID
+- `/addvip USER_ID 30` — выдать VIP, только админ
+- `/delvip USER_ID` — убрать VIP, только админ
+
+## Главное в v2.1.2
+
+- VIP-раздел закрыт без оплаты.
+- Кнопка `💎 Купить VIP` показывает реквизиты из `.env`.
+- Кнопка `✅ Я оплатил` отправляет заявку админу.
+- Админ может выдать VIP кнопкой или командой.
+- База хранит пользователей, VIP-срок и платежные заявки.
+
+Bybit API ключи можно оставить пустыми для публичных данных.
+
+
+## v2.1.2
+- ADMIN_IDS автоматически имеют бессрочный VIP.
+- Добавлена команда `/addvip USER_ID lifetime` для бессрочного VIP.

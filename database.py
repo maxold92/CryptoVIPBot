@@ -1,126 +1,46 @@
-import aiosqlite
-from datetime import datetime, timedelta, timezone
-from config import config
+import os
+from dataclasses import dataclass
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
-class Database:
-    def __init__(self, path: str = config.database_path):
-        self.path = path
-
-    async def init(self):
-        async with aiosqlite.connect(self.path) as db:
-            await db.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id INTEGER PRIMARY KEY,
-                    username TEXT,
-                    first_name TEXT,
-                    is_admin INTEGER DEFAULT 0,
-                    vip_until TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-            ''')
-            await db.execute('''
-                CREATE TABLE IF NOT EXISTS payments (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    status TEXT NOT NULL,
-                    days INTEGER DEFAULT 30,
-                    note TEXT,
-                    created_at TEXT NOT NULL
-                )
-            ''')
-            await db.commit()
-
-    async def upsert_user(self, user):
-        now = datetime.now(timezone.utc).isoformat()
-        is_admin = 1 if user.id in config.admin_ids else 0
-        async with aiosqlite.connect(self.path) as db:
-            await db.execute('''
-                INSERT INTO users(user_id, username, first_name, is_admin, created_at, updated_at)
-                VALUES(?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET
-                    username=excluded.username,
-                    first_name=excluded.first_name,
-                    is_admin=excluded.is_admin,
-                    updated_at=excluded.updated_at
-            ''', (user.id, user.username, user.first_name, is_admin, now, now))
-            await db.commit()
-
-    async def is_vip(self, user_id: int) -> bool:
-        async with aiosqlite.connect(self.path) as db:
-            cur = await db.execute('SELECT vip_until FROM users WHERE user_id=?', (user_id,))
-            row = await cur.fetchone()
-        if not row or not row[0]:
-            return False
-        try:
-            return datetime.fromisoformat(row[0]) > datetime.now(timezone.utc)
-        except ValueError:
-            return False
-
-    async def vip_until(self, user_id: int) -> str | None:
-        async with aiosqlite.connect(self.path) as db:
-            cur = await db.execute('SELECT vip_until FROM users WHERE user_id=?', (user_id,))
-            row = await cur.fetchone()
-        return row[0] if row else None
-
-    async def add_vip(self, user_id: int, days: int = 30, note: str = 'admin'):
-        now = datetime.now(timezone.utc)
-        current = await self.vip_until(user_id)
-        start = now
-        if current:
+def _int_list(value: str) -> list[int]:
+    result = []
+    for item in value.replace(' ', '').split(','):
+        if item:
             try:
-                old = datetime.fromisoformat(current)
-                if old > now:
-                    start = old
+                result.append(int(item))
             except ValueError:
                 pass
-        vip_until = (start + timedelta(days=days)).isoformat()
-        async with aiosqlite.connect(self.path) as db:
-            await db.execute('''
-                INSERT INTO users(user_id, username, first_name, is_admin, vip_until, created_at, updated_at)
-                VALUES(?, '', '', 0, ?, ?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET vip_until=excluded.vip_until, updated_at=excluded.updated_at
-            ''', (user_id, vip_until, now.isoformat(), now.isoformat()))
-            await db.execute('INSERT INTO payments(user_id, status, days, note, created_at) VALUES(?, ?, ?, ?, ?)',
-                             (user_id, 'approved', days, note, now.isoformat()))
-            await db.commit()
-        return vip_until
-
-    async def create_payment_request(self, user_id: int, days: int = 30, note: str = 'user_pressed_paid'):
-        now = datetime.now(timezone.utc).isoformat()
-        async with aiosqlite.connect(self.path) as db:
-            await db.execute('INSERT INTO payments(user_id, status, days, note, created_at) VALUES(?, ?, ?, ?, ?)',
-                             (user_id, 'pending', days, note, now))
-            await db.commit()
-
-    async def remove_vip(self, user_id: int):
-        now = datetime.now(timezone.utc).isoformat()
-        async with aiosqlite.connect(self.path) as db:
-            await db.execute('UPDATE users SET vip_until=NULL, updated_at=? WHERE user_id=?', (now, user_id))
-            await db.commit()
-
-    async def stats(self) -> dict:
-        async with aiosqlite.connect(self.path) as db:
-            total = (await (await db.execute('SELECT COUNT(*) FROM users')).fetchone())[0]
-            pending = (await (await db.execute("SELECT COUNT(*) FROM payments WHERE status='pending'")).fetchone())[0]
-            vip_rows = await (await db.execute('SELECT vip_until FROM users WHERE vip_until IS NOT NULL')).fetchall()
-        active_vip = 0
-        now = datetime.now(timezone.utc)
-        for (vip_until,) in vip_rows:
-            try:
-                if datetime.fromisoformat(vip_until) > now:
-                    active_vip += 1
-            except ValueError:
-                pass
-        return {'users': total, 'active_vip': active_vip, 'pending': pending}
-
-    async def list_users(self, limit: int = 10) -> list[dict]:
-        async with aiosqlite.connect(self.path) as db:
-            db.row_factory = aiosqlite.Row
-            cur = await db.execute('SELECT user_id, username, first_name, vip_until, created_at FROM users ORDER BY updated_at DESC LIMIT ?', (limit,))
-            rows = await cur.fetchall()
-        return [dict(r) for r in rows]
+    return result
 
 
-db = Database()
+@dataclass
+class Config:
+    bot_token: str = os.getenv('BOT_TOKEN', '')
+    group_chat_id: str = os.getenv('GROUP_CHAT_ID', '')
+    vip_channel_id: str = os.getenv('VIP_CHANNEL_ID', '')
+    admin_ids: list[int] = None
+
+    bybit_api_key: str = os.getenv('BYBIT_API_KEY', '')
+    bybit_api_secret: str = os.getenv('BYBIT_API_SECRET', '')
+    bybit_testnet: bool = os.getenv('BYBIT_TESTNET', 'false').lower() == 'true'
+
+    timezone: str = os.getenv('TIMEZONE', 'Europe/Kyiv')
+    morning_message: str = os.getenv('MORNING_MESSAGE', '☀️ Доброе утро трейдеры)')
+    signal_symbols: list[str] = None
+    signal_interval_minutes: int = int(os.getenv('SIGNAL_INTERVAL_MINUTES', '15'))
+    min_auto_score: int = int(os.getenv('MIN_AUTO_SCORE', '80'))
+    auto_signals: bool = os.getenv('AUTO_SIGNALS', 'false').lower() == 'true'
+
+    vip_price_text: str = os.getenv('VIP_PRICE_TEXT', 'VIP доступ: 30 дней — 20 USDT')
+    payment_details: str = os.getenv('PAYMENT_DETAILS', 'Напиши админу для оплаты VIP.')
+    database_path: str = os.getenv('DATABASE_PATH', 'cryptovipbot.db')
+
+    def __post_init__(self):
+        self.admin_ids = _int_list(os.getenv('ADMIN_IDS', ''))
+        self.signal_symbols = [x.strip().upper() for x in os.getenv('SIGNAL_SYMBOLS', 'BTCUSDT,ETHUSDT').split(',') if x.strip()]
+
+
+config = Config()

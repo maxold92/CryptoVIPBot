@@ -1,5 +1,9 @@
-from main import main
-
-if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+.env
+*.db
+__pycache__/
+*.pyc
+.venv/
+venv/
+.idea/
+.vscode/
+*.log

@@ -1,46 +1,45 @@
-import os
-from dataclasses import dataclass
-from dotenv import load_dotenv
-
-load_dotenv()
+import pandas as pd
+from pybit.unified_trading import HTTP
+from config import config
 
 
-def _int_list(value: str) -> list[int]:
-    result = []
-    for item in value.replace(' ', '').split(','):
-        if item:
-            try:
-                result.append(int(item))
-            except ValueError:
-                pass
-    return result
+class BybitClient:
+    def __init__(self):
+        kwargs = {'testnet': config.bybit_testnet}
+        if config.bybit_api_key and config.bybit_api_secret:
+            kwargs.update(api_key=config.bybit_api_key, api_secret=config.bybit_api_secret)
+        self.session = HTTP(**kwargs)
+
+    def get_kline(self, symbol: str, interval: str = '15', limit: int = 250) -> pd.DataFrame:
+        data = self.session.get_kline(category='linear', symbol=symbol, interval=interval, limit=limit)
+        rows = data.get('result', {}).get('list', [])
+        if not rows:
+            raise RuntimeError(f'No kline data for {symbol}')
+        df = pd.DataFrame(rows, columns=['time', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
+        for col in ['open', 'high', 'low', 'close', 'volume', 'turnover']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        df['time'] = pd.to_datetime(pd.to_numeric(df['time']), unit='ms')
+        return df.sort_values('time').reset_index(drop=True)
+
+    def get_funding_rate(self, symbol: str) -> float:
+        try:
+            data = self.session.get_tickers(category='linear', symbol=symbol)
+            item = data.get('result', {}).get('list', [{}])[0]
+            return float(item.get('fundingRate', 0)) * 100
+        except Exception:
+            return 0.0
+
+    def get_open_interest_change(self, symbol: str) -> float:
+        try:
+            data = self.session.get_open_interest(category='linear', symbol=symbol, intervalTime='15min', limit=2)
+            rows = data.get('result', {}).get('list', [])
+            if len(rows) < 2:
+                return 0.0
+            latest = float(rows[0].get('openInterest', 0))
+            prev = float(rows[1].get('openInterest', 0))
+            return 0.0 if prev == 0 else (latest - prev) / prev * 100
+        except Exception:
+            return 0.0
 
 
-@dataclass
-class Config:
-    bot_token: str = os.getenv('BOT_TOKEN', '')
-    group_chat_id: str = os.getenv('GROUP_CHAT_ID', '')
-    vip_channel_id: str = os.getenv('VIP_CHANNEL_ID', '')
-    admin_ids: list[int] = None
-
-    bybit_api_key: str = os.getenv('BYBIT_API_KEY', '')
-    bybit_api_secret: str = os.getenv('BYBIT_API_SECRET', '')
-    bybit_testnet: bool = os.getenv('BYBIT_TESTNET', 'false').lower() == 'true'
-
-    timezone: str = os.getenv('TIMEZONE', 'Europe/Kyiv')
-    morning_message: str = os.getenv('MORNING_MESSAGE', '☀️ Доброе утро трейдеры)')
-    signal_symbols: list[str] = None
-    signal_interval_minutes: int = int(os.getenv('SIGNAL_INTERVAL_MINUTES', '15'))
-    min_auto_score: int = int(os.getenv('MIN_AUTO_SCORE', '80'))
-    auto_signals: bool = os.getenv('AUTO_SIGNALS', 'false').lower() == 'true'
-
-    vip_price_text: str = os.getenv('VIP_PRICE_TEXT', 'VIP доступ: 30 дней — 20 USDT')
-    payment_details: str = os.getenv('PAYMENT_DETAILS', 'Напиши админу для оплаты VIP.')
-    database_path: str = os.getenv('DATABASE_PATH', 'cryptovipbot.db')
-
-    def __post_init__(self):
-        self.admin_ids = _int_list(os.getenv('ADMIN_IDS', ''))
-        self.signal_symbols = [x.strip().upper() for x in os.getenv('SIGNAL_SYMBOLS', 'BTCUSDT,ETHUSDT').split(',') if x.strip()]
-
-
-config = Config()
+bybit = BybitClient()
