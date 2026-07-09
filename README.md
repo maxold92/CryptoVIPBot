@@ -1,17 +1,21 @@
-# CryptoVIPBot v1.1
+# CryptoVIPBot v1.2
 
-Telegram bot for Bybit market analysis and signal delivery.
+Telegram-бот для Bybit: статус, тестовый анализ, автоматическая проверка рынка, утреннее сообщение.
 
-## Features
-- Telegram bot on aiogram 3
-- Bybit futures market data via pybit
-- EMA50/EMA200, RSI, MACD, ATR
-- Automatic signal scan every 15 minutes
-- Daily morning message at 09:00 Europe/Kyiv
-- systemd-ready deployment
+## Команды
 
-## Commands
-- /start
-- /status
-- /chatid
-- /test_signal
+- `/start`
+- `/status`
+- `/test_signal`
+- `/analysis`
+
+## Обновление на сервере
+
+```bash
+cd /root/CryptoVIPBot
+git pull
+source venv/bin/activate
+pip install -r requirements.txt
+systemctl restart cryptovipbot
+systemctl status cryptovipbot
+```

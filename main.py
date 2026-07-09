@@ -1,56 +1,97 @@
-from __future__ import annotations
-
 import asyncio
+import logging
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import Command
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+from zoneinfo import ZoneInfo
+
 from config import config
-from scheduler import setup_scheduler, signal_job
+from signals import analyze_all
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
+bot = Bot(token=config.bot_token)
 dp = Dispatcher()
+scheduler = AsyncIOScheduler(timezone=ZoneInfo(config.timezone))
 
 
-def _is_admin(user_id: int) -> bool:
+def is_admin(user_id: int) -> bool:
     return not config.admin_ids or user_id in config.admin_ids
 
 
-@dp.message(CommandStart())
-async def start(message: types.Message):
-    await message.answer('✅ CryptoVIPBot работает.\nКоманды: /status, /test_signal, /chatid')
+async def send_to_group(text: str):
+    if config.group_chat_id:
+        await bot.send_message(config.group_chat_id, text)
 
 
-@dp.message(Command('status'))
-async def status(message: types.Message):
+async def market_scan(force: bool = False):
+    messages = analyze_all(force=force)
+    if not messages:
+        return
+    for msg in messages:
+        await send_to_group(msg)
+        await asyncio.sleep(1)
+
+
+async def morning_job():
+    await send_to_group(config.morning_message)
+
+
+@dp.message(Command('start'))
+async def cmd_start(message: types.Message):
     await message.answer(
-        '✅ Бот активен\n'
-        f'Монеты: {", ".join(config.signal_symbols)}\n'
-        f'Интервал: {config.signal_interval_minutes} минут\n'
-        f'TF: {config.signal_timeframe}m\n'
-        f'Bybit key: {"есть" if config.bybit_api_key else "нет"}'
+        "✅ CryptoVIPBot работает\n\n"
+        "Команды:\n"
+        "/status — статус\n"
+        "/test_signal — тестовый анализ\n"
+        "/analysis — показать анализ прямо здесь"
     )
 
 
-@dp.message(Command('chatid'))
-async def chatid(message: types.Message):
-    await message.answer(f'Chat ID: {message.chat.id}')
+@dp.message(Command('status'))
+async def cmd_status(message: types.Message):
+    bybit_status = 'есть' if config.bybit_api_key and config.bybit_api_secret else 'нет'
+    group_status = config.group_chat_id or 'не указан'
+    await message.answer(
+        f"✅ Бот активен\n"
+        f"Монеты: {', '.join(config.signal_symbols)}\n"
+        f"Интервал: {config.signal_interval_minutes} минут\n"
+        f"Мин. сила сигнала: {config.min_signal_score}/100\n"
+        f"Bybit key: {bybit_status}\n"
+        f"Группа: {group_status}"
+    )
 
 
 @dp.message(Command('test_signal'))
-async def test_signal(message: types.Message, bot: Bot):
-    if not _is_admin(message.from_user.id):
-        await message.answer('⛔ Нет доступа')
-        return
+async def cmd_test_signal(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return await message.answer('Нет доступа')
     await message.answer('🔎 Проверяю рынок...')
-    await signal_job(bot)
+    messages = analyze_all(force=True)
+    if not messages:
+        await message.answer('Сигналов нет')
+        return
+    for msg in messages:
+        await message.answer(msg)
     await message.answer('✅ Проверка завершена')
+
+
+@dp.message(Command('analysis'))
+async def cmd_analysis(message: types.Message):
+    await cmd_test_signal(message)
 
 
 async def main():
     if not config.bot_token:
         raise RuntimeError('BOT_TOKEN is empty')
-    bot = Bot(token=config.bot_token)
-    setup_scheduler(bot)
-    print('CryptoVIPBot started')
+
+    scheduler.add_job(morning_job, CronTrigger(hour=9, minute=0, timezone=ZoneInfo(config.timezone)))
+    scheduler.add_job(market_scan, IntervalTrigger(minutes=config.signal_interval_minutes), kwargs={'force': False})
+    scheduler.start()
+
+    logging.info('CryptoVIPBot v1.2 started')
     await dp.start_polling(bot)
 
 
