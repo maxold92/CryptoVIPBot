@@ -1,30 +1,18 @@
-# CryptoVIPBot v1.4
+# CryptoVIPBot v2.0
 
-Обновление v1.4:
+Telegram bot for Bybit futures analysis with inline button menu.
 
-- добавлен тренд 4H;
-- добавлен ADX для силы тренда;
-- добавлен ATR % для оценки волатильности;
-- улучшена логика Open Interest;
-- улучшена интерпретация Funding;
-- улучшено отображение объёма;
-- добавлены предупреждения по рискам;
-- TP/SL рассчитываются от ATR.
+## Features
+- Telegram buttons / inline menu
+- Bybit futures data
+- EMA50/EMA200, RSI, MACD, ATR, ADX
+- Funding and Open Interest
+- 15m + 1H + 4H trend
+- TP/SL based on ATR
+- systemd-ready deployment
 
-## Обновление на сервере
-
-```bash
-cd /root/CryptoVIPBot
-git pull
-source venv/bin/activate
-pip install -r requirements.txt
-systemctl restart cryptovipbot
-systemctl status cryptovipbot
-```
-
-Проверка в Telegram:
-
-```text
-/status
-/test_signal
-```
+## Commands
+- /start
+- /menu
+- /status
+- /test_signal
