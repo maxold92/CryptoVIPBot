@@ -1,18 +1,31 @@
-# CryptoVIPBot v2.0
+# CryptoVIPBot v2.1.0
 
-Telegram bot for Bybit futures analysis with inline button menu.
+Sprint 1: VIP-доступ, база пользователей, админ-команды, Bybit-анализ, авто-сообщение в 09:00.
 
-## Features
-- Telegram buttons / inline menu
-- Bybit futures data
-- EMA50/EMA200, RSI, MACD, ATR, ADX
-- Funding and Open Interest
-- 15m + 1H + 4H trend
-- TP/SL based on ATR
-- systemd-ready deployment
+## Запуск
 
-## Commands
-- /start
-- /menu
-- /status
-- /test_signal
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+nano .env
+python main.py
+```
+
+## Команды
+
+- `/start` — меню
+- `/menu` — меню
+- `/status` — статус
+- `/addvip USER_ID 30` — выдать VIP, только админ
+- `/delvip USER_ID` — убрать VIP, только админ
+
+## Что добавить в .env
+
+- `BOT_TOKEN`
+- `GROUP_CHAT_ID`
+- `ADMIN_IDS`
+- `PAYMENT_DETAILS`
+
+Bybit API ключи можно оставить пустыми для публичных данных.

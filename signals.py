@@ -1,170 +1,107 @@
-from dataclasses import dataclass
-from typing import List
-import pandas as pd
-import ta
+from dataclasses import dataclass, field
 from bybit_client import bybit
+from indicators import enrich
+
 
 @dataclass
 class Signal:
     symbol: str
     direction: str
-    price: float
     score: int
-    risk: str
-    funding: float
-    oi_change: float
-    volume_factor: float
-    trend_15m: str
-    trend_1h: str
-    trend_4h: str
-    rsi: float
-    adx: float
-    atr_pct: float
+    entry: float
     tp1: float
     tp2: float
     tp3: float
     sl: float
-    reasons: List[str]
-    warnings: List[str]
+    risk: str
+    reasons: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    indicators: dict = field(default_factory=dict)
 
 
-def _prepare(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df["ema50"] = ta.trend.ema_indicator(df["close"], window=50)
-    df["ema200"] = ta.trend.ema_indicator(df["close"], window=200)
-    df["rsi"] = ta.momentum.rsi(df["close"], window=14)
-    macd = ta.trend.MACD(df["close"])
-    df["macd"] = macd.macd()
-    df["macd_signal"] = macd.macd_signal()
-    df["atr"] = ta.volatility.average_true_range(df["high"], df["low"], df["close"], window=14)
-    adx = ta.trend.ADXIndicator(df["high"], df["low"], df["close"], window=14)
-    df["adx"] = adx.adx()
-    df["vol_ma"] = df["volume"].rolling(20).mean()
-    return df
+def _trend(row) -> str:
+    if row['ema50'] > row['ema200']:
+        return 'UP'
+    if row['ema50'] < row['ema200']:
+        return 'DOWN'
+    return 'FLAT'
 
 
-def _trend(symbol: str, tf: str) -> str:
-    try:
-        df = _prepare(bybit.klines(symbol, interval=tf, limit=220))
-        last = df.iloc[-1]
-        return "UP" if last["ema50"] > last["ema200"] else "DOWN"
-    except Exception:
-        return "UNKNOWN"
+def analyze_symbol(symbol: str) -> Signal:
+    df15 = enrich(bybit.get_kline(symbol, '15'))
+    df1h = enrich(bybit.get_kline(symbol, '60'))
+    df4h = enrich(bybit.get_kline(symbol, '240'))
+    r15, r1h, r4h = df15.iloc[-1], df1h.iloc[-1], df4h.iloc[-1]
 
+    price = float(r15['close'])
+    atr = float(r15['atr'])
+    trend15, trend1h, trend4h = _trend(r15), _trend(r1h), _trend(r4h)
+    funding = bybit.get_funding_rate(symbol)
+    oi_change = bybit.get_open_interest_change(symbol)
+    volume_factor = float(r15['volume'] / r15['volume_sma20']) if r15['volume_sma20'] else 1.0
 
-def analyze_symbol(symbol: str) -> Signal | None:
-    df = _prepare(bybit.klines(symbol, interval="15", limit=220))
-    last = df.iloc[-1]
-    price = float(last["close"])
-    rsi = float(last["rsi"])
-    adx = float(last["adx"])
-    atr = float(last["atr"])
-    atr_pct = (atr / price) * 100 if price else 0
-    volume_factor = float(last["volume"] / last["vol_ma"]) if last["vol_ma"] and last["vol_ma"] > 0 else 0
-    funding = bybit.funding_rate(symbol)
-    oi_change = bybit.open_interest_change(symbol)
+    long_score = short_score = 0
+    reasons, warnings = [], []
 
-    trend_15m = "UP" if last["ema50"] > last["ema200"] else "DOWN"
-    trend_1h = _trend(symbol, "60")
-    trend_4h = _trend(symbol, "240")
+    if trend4h == 'UP': long_score += 20; reasons.append('4H тренд вверх')
+    if trend4h == 'DOWN': short_score += 20; reasons.append('4H тренд вниз')
+    if trend1h == 'UP': long_score += 15; reasons.append('1H тренд вверх')
+    if trend1h == 'DOWN': short_score += 15; reasons.append('1H тренд вниз')
+    if trend15 == 'UP': long_score += 15; reasons.append('EMA50 выше EMA200 на 15m')
+    if trend15 == 'DOWN': short_score += 15; reasons.append('EMA50 ниже EMA200 на 15m')
 
-    long_score = 0
-    short_score = 0
-    reasons_long, reasons_short = [], []
-    warnings = []
+    if r15['macd'] > r15['macd_signal']: long_score += 10; reasons.append('MACD за LONG')
+    if r15['macd'] < r15['macd_signal']: short_score += 10; reasons.append('MACD за SHORT')
+    if 35 <= r15['rsi'] <= 60: long_score += 10; reasons.append(f"RSI {r15['rsi']:.1f} норм для LONG")
+    if 40 <= r15['rsi'] <= 65: short_score += 10; reasons.append(f"RSI {r15['rsi']:.1f} норм для SHORT")
 
-    if trend_15m == "UP":
-        long_score += 15; reasons_long.append("EMA50 выше EMA200 — тренд 15m вверх")
+    if r15['adx'] >= 20:
+        long_score += 5; short_score += 5; reasons.append(f"ADX {r15['adx']:.1f}: тренд есть")
     else:
-        short_score += 15; reasons_short.append("EMA50 ниже EMA200 — тренд 15m вниз")
-    if trend_1h == "UP":
-        long_score += 12; reasons_long.append("Тренд 1H вверх")
-    elif trend_1h == "DOWN":
-        short_score += 12; reasons_short.append("Тренд 1H вниз")
-    if trend_4h == "UP":
-        long_score += 15; reasons_long.append("Тренд 4H вверх")
-    elif trend_4h == "DOWN":
-        short_score += 15; reasons_short.append("Тренд 4H вниз")
-
-    if last["macd"] > last["macd_signal"]:
-        long_score += 10; reasons_long.append("MACD подтверждает рост")
-    else:
-        short_score += 10; reasons_short.append("MACD подтверждает снижение")
-
-    if 35 <= rsi <= 58:
-        long_score += 8; reasons_long.append(f"RSI {rsi:.1f} — зона для продолжения роста")
-    if 42 <= rsi <= 65:
-        short_score += 8; reasons_short.append(f"RSI {rsi:.1f} — зона для продолжения снижения")
-
-    if adx >= 25:
-        long_score += 8 if trend_15m == "UP" else 0
-        short_score += 8 if trend_15m == "DOWN" else 0
-    else:
-        warnings.append("ADX ниже 25 — тренд слабый")
+        warnings.append(f"ADX {r15['adx']:.1f}: возможен флэт")
 
     if volume_factor >= 1.2:
-        if trend_15m == "UP": long_score += 8
-        if trend_15m == "DOWN": short_score += 8
-    elif volume_factor < 0.7:
-        warnings.append("Объём ниже среднего")
-
-    if oi_change > 0.2:
-        if trend_15m == "UP": long_score += 10
-        if trend_15m == "DOWN": short_score += 10
-    elif oi_change < -0.2:
-        warnings.append("OI снижается — движение может быть слабее")
-
-    if funding > 0.08:
-        long_score -= 8; warnings.append("Funding высокий — long может быть перегрет")
-    elif funding < -0.08:
-        short_score -= 8; warnings.append("Funding отрицательный — short может быть перегрет")
+        long_score += 5; short_score += 5; reasons.append(f'Объем x{volume_factor:.2f}')
+    if oi_change > 0.5:
+        if trend15 == 'UP': long_score += 15
+        if trend15 == 'DOWN': short_score += 15
+        reasons.append(f'Open Interest +{oi_change:.2f}%')
+    if funding > 0.15:
+        short_score += 5; warnings.append(f'Funding {funding:.3f}%: LONG перегрет')
+    elif funding < -0.05:
+        long_score += 5; warnings.append(f'Funding {funding:.3f}%: SHORT перегрет')
     else:
-        long_score += 4; short_score += 4
+        reasons.append(f'Funding {funding:.3f}%: нейтральный')
 
-    if long_score >= short_score:
-        direction = "LONG"
-        score = max(0, min(100, long_score))
-        reasons = reasons_long
-        tp1 = price + atr * 1.0; tp2 = price + atr * 1.8; tp3 = price + atr * 2.8; sl = price - atr * 1.2
+    direction = 'LONG' if long_score >= short_score else 'SHORT'
+    score = int(min(max(long_score, short_score), 100))
+    risk = 'Низкий' if score >= 85 else 'Средний' if score >= 70 else 'Высокий'
+
+    if direction == 'LONG':
+        tp1, tp2, tp3, sl = price + atr*1.0, price + atr*1.8, price + atr*2.6, price - atr*1.2
     else:
-        direction = "SHORT"
-        score = max(0, min(100, short_score))
-        reasons = reasons_short
-        tp1 = price - atr * 1.0; tp2 = price - atr * 1.8; tp3 = price - atr * 2.8; sl = price + atr * 1.2
+        tp1, tp2, tp3, sl = price - atr*1.0, price - atr*1.8, price - atr*2.6, price + atr*1.2
 
-    risk = "Низкий" if score >= 75 and len(warnings) == 0 else "Средний" if score >= 55 else "Повышенный"
-
-    return Signal(symbol, direction, price, score, risk, funding, oi_change, volume_factor, trend_15m, trend_1h, trend_4h, rsi, adx, atr_pct, tp1, tp2, tp3, sl, reasons, warnings)
+    return Signal(symbol, direction, score, price, tp1, tp2, tp3, sl, risk, reasons[:8], warnings[:5], {
+        'trend15': trend15, 'trend1h': trend1h, 'trend4h': trend4h,
+        'rsi': float(r15['rsi']), 'adx': float(r15['adx']), 'atr': atr,
+        'funding': funding, 'oi_change': oi_change, 'volume_factor': volume_factor,
+    })
 
 
 def format_signal(sig: Signal) -> str:
-    emoji = "🟢" if sig.direction == "LONG" else "🔴"
-    stars = "⭐" * max(1, min(5, round(sig.score / 20)))
-    reasons = "\n".join([f"✅ {r}" for r in sig.reasons[:6]]) or "—"
-    warns = "\n".join([f"⚠️ {w}" for w in sig.warnings])
-    if warns:
-        warns = "\n\nРиски:\n" + warns
+    icon = '🟢' if sig.direction == 'LONG' else '🔴'
+    reasons = '\n'.join(f'• {r}' for r in sig.reasons) or '• Нет причин'
+    warnings = ('\n\n⚠️ Риски:\n' + '\n'.join(f'• {w}' for w in sig.warnings)) if sig.warnings else ''
     return (
-        f"🚨 CryptoVIPBot v2.0\n\n"
-        f"{emoji} {sig.direction}\n"
-        f"Монета: {sig.symbol}\n"
-        f"Цена: {sig.price:,.4f}\n\n"
-        f"{stars} Сила сигнала: {sig.score}/100\n"
-        f"⚠️ Риск: {sig.risk}\n"
-        f"💰 Funding: {sig.funding:.4f}%\n"
-        f"📊 OI: {sig.oi_change:+.2f}%\n"
-        f"📦 Volume: x{sig.volume_factor:.2f}\n"
-        f"📈 Trend 15m: {sig.trend_15m}\n"
-        f"📈 Trend 1H: {sig.trend_1h}\n"
-        f"📈 Trend 4H: {sig.trend_4h}\n"
-        f"📉 RSI: {sig.rsi:.1f}\n"
-        f"💪 ADX: {sig.adx:.1f}\n"
-        f"🌊 ATR: {sig.atr_pct:.2f}%\n\n"
-        f"Причины:\n{reasons}"
-        f"{warns}\n\n"
-        f"🎯 TP1: {sig.tp1:,.4f}\n"
-        f"🎯 TP2: {sig.tp2:,.4f}\n"
-        f"🎯 TP3: {sig.tp3:,.4f}\n"
-        f"🛑 SL: {sig.sl:,.4f}\n\n"
-        f"Не финансовая рекомендация. Риск контролируй сам."
+        f'{icon} <b>{sig.symbol} {sig.direction}</b>\n\n'
+        f'Сила: <b>{sig.score}/100</b>\n'
+        f'Риск: <b>{sig.risk}</b>\n\n'
+        f'Вход: <code>{sig.entry:.6f}</code>\n'
+        f'TP1: <code>{sig.tp1:.6f}</code>\n'
+        f'TP2: <code>{sig.tp2:.6f}</code>\n'
+        f'TP3: <code>{sig.tp3:.6f}</code>\n'
+        f'SL: <code>{sig.sl:.6f}</code>\n\n'
+        f'Причины:\n{reasons}'
+        f'{warnings}'
     )
