@@ -1,1 +1,1 @@
-# Reserved for future signal statistics database.
+# Reserved for future signal history and statistics.
