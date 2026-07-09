@@ -1,27 +1,17 @@
-# CryptoVIPBot
+# CryptoVIPBot v1.1
 
-Telegram-бот для криптовалютных сигналов с подключением к Bybit.
+Telegram bot for Bybit market analysis and signal delivery.
 
-## Установка на сервере
+## Features
+- Telegram bot on aiogram 3
+- Bybit futures market data via pybit
+- EMA50/EMA200, RSI, MACD, ATR
+- Automatic signal scan every 15 minutes
+- Daily morning message at 09:00 Europe/Kyiv
+- systemd-ready deployment
 
-```bash
-git clone https://github.com/maxold92/CryptoVIPBot.git
-cd CryptoVIPBot
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-nano .env
-python3 main.py
-```
-
-## Команды Telegram
-
-- `/start` — проверка запуска
-- `/id` — узнать свой ID и ID группы
-- `/test` — тестовое сообщение
-- `/scan` — ручной скан рынка
-
-## Важно
-
-Файл `.env` не загружай на GitHub. Там хранятся токены и ключи.
+## Commands
+- /start
+- /status
+- /chatid
+- /test_signal
