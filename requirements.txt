@@ -1,11 +1,8 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-
-main_menu = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="📊 Проверить рынок"), KeyboardButton(text="🔥 Лучшие сигналы")],
-        [KeyboardButton(text="📈 BTC"), KeyboardButton(text="📉 ETH")],
-        [KeyboardButton(text="🚀 Все монеты Bybit"), KeyboardButton(text="📊 Статистика")],
-        [KeyboardButton(text="⚙️ Настройки"), KeyboardButton(text="ℹ️ Помощь")],
-    ],
-    resize_keyboard=True,
-)
+aiogram==3.13.1
+python-dotenv==1.0.1
+aiohttp==3.10.10
+aiosqlite==0.20.0
+apscheduler==3.10.4
+pybit==5.8.0
+pandas==2.2.3
+ta==0.11.0
