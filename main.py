@@ -17,7 +17,7 @@ def is_admin(user_id: int) -> bool:
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    await message.answer("✅ CryptoVIPBot v1.3 запущен\nКоманды: /status, /test_signal, /analysis")
+    await message.answer("✅ CryptoVIPBot v1.4 запущен\nКоманды: /status, /test_signal, /analysis")
 
 
 @dp.message(Command("status"))
@@ -37,7 +37,7 @@ async def test_signal(message: types.Message):
     if not is_admin(message.from_user.id):
         await message.answer("⛔ Нет доступа")
         return
-    await message.answer("🔎 Проверяю рынок v1.3...")
+    await message.answer("🔎 Проверяю рынок v1.4...")
     signals = analyze_many(config.signal_symbols)
     for sig in signals:
         await message.answer(sig.format())
@@ -46,7 +46,7 @@ async def test_signal(message: types.Message):
 
 async def main():
     setup_scheduler(bot)
-    print("CryptoVIPBot v1.3 started")
+    print("CryptoVIPBot v1.4 started")
     await dp.start_polling(bot)
 
 

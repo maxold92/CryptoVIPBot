@@ -1,30 +1,30 @@
-# CryptoVIPBot v1.3
+# CryptoVIPBot v1.4
 
-Telegram-бот для анализа Bybit USDT-фьючерсов.
+Обновление v1.4:
 
-## Новое в v1.3
+- добавлен тренд 4H;
+- добавлен ADX для силы тренда;
+- добавлен ATR % для оценки волатильности;
+- улучшена логика Open Interest;
+- улучшена интерпретация Funding;
+- улучшено отображение объёма;
+- добавлены предупреждения по рискам;
+- TP/SL рассчитываются от ATR.
 
-- Open Interest
-- Funding в рейтинге сигнала
-- Volume factor
-- Подтверждение тренда 15m + 1H
-- Рейтинг сигнала /100
-- Автоматическая отправка только сильных сигналов
-
-## Команды
-
-- `/start`
-- `/status`
-- `/test_signal`
-- `/analysis`
-
-## Запуск
+## Обновление на сервере
 
 ```bash
-python3 -m venv venv
+cd /root/CryptoVIPBot
+git pull
 source venv/bin/activate
 pip install -r requirements.txt
-cp env.example .env
-nano .env
-python3 main.py
+systemctl restart cryptovipbot
+systemctl status cryptovipbot
+```
+
+Проверка в Telegram:
+
+```text
+/status
+/test_signal
 ```
