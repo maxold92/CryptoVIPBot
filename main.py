@@ -7,7 +7,7 @@ from aiogram.types import Message, CallbackQuery
 
 from config import config
 from database import db
-from keyboards import main_menu, signal_buttons, buy_vip_menu, admin_menu
+from keyboards import main_menu, signal_buttons, buy_vip_menu, admin_menu, approve_vip_menu
 from scheduler import setup_scheduler
 from signals import analyze_symbol, format_signal
 
@@ -24,7 +24,7 @@ async def menu_for(message_or_call):
     await db.upsert_user(user)
     vip = await db.is_vip(user.id)
     text = (
-        '🤖 <b>CryptoVIPBot v2.1.0</b>\n\n'
+        '🤖 <b>CryptoVIPBot v2.1.1</b>\n\n'
         f"VIP: {'✅ активен' if vip else '❌ нет доступа'}\n"
         'Выбери действие кнопками ниже.'
     )
@@ -60,6 +60,20 @@ async def cmd_start(message: Message):
 @dp.message(Command('menu'))
 async def cmd_menu(message: Message):
     await menu_for(message)
+
+
+@dp.message(Command('myid'))
+async def cmd_myid(message: Message):
+    await db.upsert_user(message.from_user)
+    await message.answer(f'Твой Telegram ID: <code>{message.from_user.id}</code>')
+
+
+@dp.message(Command('vip'))
+async def cmd_vip(message: Message):
+    await db.upsert_user(message.from_user)
+    vip = await db.is_vip(message.from_user.id)
+    until = await db.vip_until(message.from_user.id)
+    await message.answer(f"VIP: {'✅ активен' if vip else '❌ нет'}\nVIP до: {until or '-'}", reply_markup=buy_vip_menu() if not vip else main_menu(True, is_admin(message.from_user.id)))
 
 
 @dp.message(Command('status'))
@@ -155,15 +169,26 @@ async def cb_buy_vip(call: CallbackQuery):
 async def cb_paid_vip(call: CallbackQuery):
     await db.upsert_user(call.from_user)
     await call.answer('Заявка отправлена')
+    await db.create_payment_request(call.from_user.id, 30)
     await call.message.answer('✅ Заявка отправлена админу. После проверки тебе включат VIP.')
     for admin_id in config.admin_ids:
         try:
             await bot.send_message(
                 admin_id,
-                f'💰 Заявка на VIP\nUser ID: <code>{call.from_user.id}</code>\nUsername: @{call.from_user.username}\n\nВыдать: /addvip {call.from_user.id} 30'
+                f'💰 Заявка на VIP\nUser ID: <code>{call.from_user.id}</code>\nUsername: @{call.from_user.username}\n\nМожно выдать командой: /addvip {call.from_user.id} 30',
+                reply_markup=approve_vip_menu(call.from_user.id)
             )
         except Exception:
             pass
+
+
+@dp.callback_query(F.data == 'my_vip')
+async def cb_my_vip(call: CallbackQuery):
+    await db.upsert_user(call.from_user)
+    vip = await db.is_vip(call.from_user.id)
+    until = await db.vip_until(call.from_user.id)
+    await call.answer()
+    await call.message.answer(f"👤 Мой VIP\n\nСтатус: {'✅ активен' if vip else '❌ нет доступа'}\nVIP до: {until or '-'}\nID: <code>{call.from_user.id}</code>", reply_markup=buy_vip_menu() if not vip else main_menu(True, is_admin(call.from_user.id)))
 
 
 @dp.callback_query(F.data == 'settings')
@@ -178,7 +203,7 @@ async def cb_settings(call: CallbackQuery):
 @dp.callback_query(F.data == 'help')
 async def cb_help(call: CallbackQuery):
     await call.answer()
-    await call.message.answer('Команды: /start /menu /status /addvip /delvip')
+    await call.message.answer('Команды: /start /menu /status /vip /myid /addvip /delvip')
 
 
 @dp.callback_query(F.data == 'admin')
@@ -197,8 +222,38 @@ async def cb_admin_stats(call: CallbackQuery):
         return
     stats = await db.stats()
     await call.answer()
-    await call.message.answer(f"📊 Статистика\n\nПользователей: {stats['users']}\nАктивных VIP: {stats['active_vip']}")
+    await call.message.answer(f"📊 Статистика\n\nПользователей: {stats['users']}\nАктивных VIP: {stats['active_vip']}\nЗаявок на оплату: {stats['pending']}")
 
+
+
+
+@dp.callback_query(F.data == 'admin_users')
+async def cb_admin_users(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        await call.answer('Нет доступа', show_alert=True)
+        return
+    users = await db.list_users(10)
+    lines = ['👥 Последние пользователи']
+    for u in users:
+        name = u.get('username') or u.get('first_name') or '-'
+        lines.append(f"{u['user_id']} | {name} | VIP: {u.get('vip_until') or '-'}")
+    await call.answer()
+    await call.message.answer('\n'.join(lines))
+
+
+@dp.callback_query(F.data.startswith('approve_vip:'))
+async def cb_approve_vip(call: CallbackQuery):
+    if not is_admin(call.from_user.id):
+        await call.answer('Нет доступа', show_alert=True)
+        return
+    _, user_id, days = call.data.split(':')
+    until = await db.add_vip(int(user_id), int(days), note=f'button_admin:{call.from_user.id}')
+    await call.answer('VIP выдан')
+    await call.message.answer(f'✅ VIP выдан пользователю {user_id} до {until}')
+    try:
+        await bot.send_message(int(user_id), f'✅ VIP доступ активирован на {days} дней.')
+    except Exception:
+        pass
 
 @dp.callback_query(F.data == 'admin_help_addvip')
 async def cb_admin_help_addvip(call: CallbackQuery):
@@ -214,7 +269,7 @@ async def main():
         raise RuntimeError('BOT_TOKEN пустой. Заполни .env')
     await db.init()
     setup_scheduler(bot)
-    print('CryptoVIPBot v2.1.0 started')
+    print('CryptoVIPBot v2.1.1 started')
     await dp.start_polling(bot)
 
 

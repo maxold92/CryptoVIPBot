@@ -77,11 +77,22 @@ class Database:
                 pass
         vip_until = (start + timedelta(days=days)).isoformat()
         async with aiosqlite.connect(self.path) as db:
-            await db.execute('UPDATE users SET vip_until=?, updated_at=? WHERE user_id=?', (vip_until, now.isoformat(), user_id))
+            await db.execute('''
+                INSERT INTO users(user_id, username, first_name, is_admin, vip_until, created_at, updated_at)
+                VALUES(?, '', '', 0, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET vip_until=excluded.vip_until, updated_at=excluded.updated_at
+            ''', (user_id, vip_until, now.isoformat(), now.isoformat()))
             await db.execute('INSERT INTO payments(user_id, status, days, note, created_at) VALUES(?, ?, ?, ?, ?)',
                              (user_id, 'approved', days, note, now.isoformat()))
             await db.commit()
         return vip_until
+
+    async def create_payment_request(self, user_id: int, days: int = 30, note: str = 'user_pressed_paid'):
+        now = datetime.now(timezone.utc).isoformat()
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute('INSERT INTO payments(user_id, status, days, note, created_at) VALUES(?, ?, ?, ?, ?)',
+                             (user_id, 'pending', days, note, now))
+            await db.commit()
 
     async def remove_vip(self, user_id: int):
         now = datetime.now(timezone.utc).isoformat()
@@ -92,6 +103,7 @@ class Database:
     async def stats(self) -> dict:
         async with aiosqlite.connect(self.path) as db:
             total = (await (await db.execute('SELECT COUNT(*) FROM users')).fetchone())[0]
+            pending = (await (await db.execute("SELECT COUNT(*) FROM payments WHERE status='pending'")).fetchone())[0]
             vip_rows = await (await db.execute('SELECT vip_until FROM users WHERE vip_until IS NOT NULL')).fetchall()
         active_vip = 0
         now = datetime.now(timezone.utc)
@@ -101,7 +113,14 @@ class Database:
                     active_vip += 1
             except ValueError:
                 pass
-        return {'users': total, 'active_vip': active_vip}
+        return {'users': total, 'active_vip': active_vip, 'pending': pending}
+
+    async def list_users(self, limit: int = 10) -> list[dict]:
+        async with aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute('SELECT user_id, username, first_name, vip_until, created_at FROM users ORDER BY updated_at DESC LIMIT ?', (limit,))
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
 
 
 db = Database()
